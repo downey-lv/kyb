@@ -45,6 +45,7 @@ pub async fn search_map_results(mut rows: Rows<'_>) -> Result<Vec<Company>, Box<
             reg_code: search_result.reg_code,
             vat: search_result.vat,
             vat_number: search_result.vat_number,
+            pvd: None,
         };
         search_results.push(company);
     }

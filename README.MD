@@ -59,6 +59,24 @@ Response:
   "vat_number":"LV40203572370"
 }]
 
+Add `"include_pvd": true` to include matching PVD registrations by company registration number:
+```
+curl -X POST http://127.0.0.1:10001/lv/company -H "Content-Type: application/json" -d '{"name": "Coca-Cola", "include_pvd": true}'
+```
+
+Companies with PVD matches include a `pvd` array:
+```
+"pvd":[{
+  "pvd_code":"006901",
+  "address":"Ulbrokas iela 40, Rīga, LV-1021",
+  "object_name":"noliktava"
+},{
+  "pvd_code":"092172",
+  "address":"Latgales iela 495, Rumbula, Stopiņu pag., Ropažu nov., LV-2121",
+  "object_name":"vairumtirdzniecības uzņēmums (AS \"Via 3L Latvia\"; PVD Nr.092089)"
+}]
+```
+
 Search "", get []
 
 Errors are not returned, enpty array [] is returned instead.
@@ -148,6 +166,9 @@ https://dati.ur.gov.lv/register/ppi_public_persons_institutions.csv
 
 All VAT payers in Latvia:
 https://data.gov.lv/dati/dataset/9a5eae1c-2438-48cf-854b-6a2c170f918f/resource/610910e9-e086-4c5b-a7ea-0a896a697672/download/pdb_pvnmaksataji_odata.csv
+
+PVD UR open data:
+https://pakalpojumi.pvd.gov.lv/lv/opendata_files/ipvd_object_opendata/download
 ```
 
 # Config

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::latvia::company::pvd::PvdResult;
+
 #[derive(Debug, Deserialize, Serialize, Clone)]
 /// Main constructor for company register
 pub struct Company {
@@ -12,4 +14,6 @@ pub struct Company {
     pub reg_code: String,
     pub vat: bool,
     pub vat_number: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pvd: Option<Vec<PvdResult>>,
 }

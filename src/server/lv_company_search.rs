@@ -39,9 +39,13 @@ pub async fn lv_company_search(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{latvia::company::company::Company, tasks::create_test_db::create_test_db};
+    use crate::{
+        latvia::{company::company::Company, pvd::PvdRecord},
+        tasks::create_test_db::create_test_db,
+    };
     use actix_web::{App, test, web};
     use reqwest::Client;
+    use rusqlite::params;
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -86,6 +90,76 @@ mod tests {
         assert!(resp.status().is_success());
         let response_body: serde_json::Value = test::read_body_json(resp).await;
         assert_eq!(response_body[0]["reg_code"], "40203572370");
+        assert!(response_body[0].get("pvd").is_none());
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_search_with_pvd() {
+        let db = create_test_db().await.unwrap();
+
+        {
+            let mut conn = db.get().expect("Couldn't get db connection from pool");
+            PvdRecord::create_table(&conn).await.unwrap();
+            let transaction = conn.transaction().unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO pvd (reg_code, pvd_code, address, object_name)
+                    VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        "40203572370",
+                        "PVD-123",
+                        "Fantastics prospekts 123",
+                        "Production kitchen"
+                    ],
+                )
+                .unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO pvd (reg_code, pvd_code, address, object_name)
+                    VALUES (?1, ?2, ?3, ?4)",
+                    params![
+                        "40203572370",
+                        "PVD-123",
+                        "Fantastics prospekts 123",
+                        "Production kitchen"
+                    ],
+                )
+                .unwrap();
+            transaction.commit().unwrap();
+        }
+
+        let mut app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .route("/lv/company", web::post().to(lv_company_search)),
+        )
+        .await;
+
+        let request_payload = json!({
+            "name": "Raimond fantastic",
+            "include_pvd": true
+        });
+
+        let req = test::TestRequest::post()
+            .uri("/lv/company")
+            .set_json(&request_payload)
+            .to_request();
+
+        let resp = test::call_service(&mut app, req).await;
+
+        assert!(resp.status().is_success());
+        let response_body: serde_json::Value = test::read_body_json(resp).await;
+        assert_eq!(response_body[0]["reg_code"], "40203572370");
+        assert_eq!(response_body[0]["pvd"].as_array().unwrap().len(), 1);
+        assert_eq!(response_body[0]["pvd"][0]["pvd_code"], "PVD-123");
+        assert_eq!(
+            response_body[0]["pvd"][0]["object_name"],
+            "Production kitchen"
+        );
+        assert_eq!(
+            response_body[0]["pvd"][0]["address"],
+            "Fantastics prospekts 123"
+        );
     }
 
     #[actix_rt::test]
