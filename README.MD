@@ -58,8 +58,10 @@ Response:
   "vat":true,
   "vat_number":"LV40203572370"
 }]
+```
 
 Add `"include_pvd": true` to include matching PVD registrations by company registration number:
+
 ```
 curl -X POST http://127.0.0.1:10001/lv/company -H "Content-Type: application/json" -d '{"name": "Coca-Cola", "include_pvd": true}'
 ```
@@ -78,7 +80,7 @@ Companies with PVD matches include a `pvd` array:
 ```
 
 Search "", get []
-
+```
 Errors are not returned, enpty array [] is returned instead.
 ```
 # Websocket company search:
