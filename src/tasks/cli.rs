@@ -9,6 +9,11 @@ pub async fn cli(args: Vec<String>, pool: Pool<SqliteConnectionManager>) {
     if first_arg == "install" {
         if let Err(e) = import_new_data(pool).await {
             eprintln!("install error: {}", e);
+            let mut source = e.source();
+            while let Some(cause) = source {
+                eprintln!("  caused by: {}", cause);
+                source = cause.source();
+            }
         };
     } else {
         eprintln!("help: only working command is 'install'");
