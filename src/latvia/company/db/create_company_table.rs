@@ -25,6 +25,10 @@ impl Company {
             "CREATE INDEX IF NOT EXISTS idx_normal_name ON company (normal_name)",
             [],
         )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reg_code ON company (reg_code)",
+            [],
+        )?;
 
         create_company_log_table(&conn).await?;
 

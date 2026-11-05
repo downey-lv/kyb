@@ -22,6 +22,9 @@ pub enum KybError {
     #[error("Actix Web error: {0}")]
     ActixWebError(#[from] actix_web::error::Error),
 
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+
     #[error("No DB error")]
     NoDb,
 }

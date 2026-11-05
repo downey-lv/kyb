@@ -22,6 +22,9 @@ pub async fn lv_company_search(
         Err(err) => {
             //  drop(pool);
             match err {
+                KybError::BadRequest(err) => {
+                    HttpResponse::BadRequest().json(serde_json::json!({ "error": err }))
+                }
                 KybError::StringError(err) => {
                     eprintln!("kyb err: {:?}", &err);
                     HttpResponse::ExpectationFailed().json(serde_json::json!({ "error": err }))
@@ -191,6 +194,132 @@ mod tests {
         // ASSERT IT'S EMPTY
         assert_eq!(response_body, json!([]));
     }
+    async fn post_company(
+        db: crate::db::get_db::Pool,
+        payload: serde_json::Value,
+    ) -> (actix_web::http::StatusCode, serde_json::Value) {
+        let app = test::init_service(
+            App::new()
+                .app_data(web::Data::new(db))
+                .route("/lv/company", web::post().to(lv_company_search)),
+        )
+        .await;
+        let req = test::TestRequest::post()
+            .uri("/lv/company")
+            .set_json(&payload)
+            .to_request();
+        let resp = test::call_service(&app, req).await;
+        let status = resp.status();
+        let body: serde_json::Value = test::read_body_json(resp).await;
+        (status, body)
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_reg_code_exact_match() {
+        let db = create_test_db().await.unwrap();
+        let (status, body) = post_company(db, json!({ "reg_code": "40203572370" })).await;
+
+        assert_eq!(status, 200);
+        let results = body.as_array().unwrap();
+        assert_eq!(results.len(), 1);
+        let company = &results[0];
+        assert_eq!(company["reg_code"], "40203572370");
+        assert_eq!(company["name"], "Raimond fantastic");
+        assert_eq!(company["legal_form"], "SIA");
+        assert_eq!(company["city"], "Jūrmala");
+        assert_eq!(company["address"], "Mellužu prospekts 76");
+        assert_eq!(company["public_sector"], "0");
+        assert_eq!(company["vat"], true);
+        assert_eq!(company["vat_number"], "LV40203572370");
+        assert!(company.get("pvd").is_none());
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_reg_code_lv_prefix_is_stripped() {
+        let db = create_test_db().await.unwrap();
+        for code in ["LV40203572370", "lv40203572370", " LV40203572370 "] {
+            let (status, body) = post_company(db.clone(), json!({ "reg_code": code })).await;
+            assert_eq!(status, 200, "{code}");
+            assert_eq!(body[0]["reg_code"], "40203572370", "{code}");
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_reg_code_is_exact_not_partial() {
+        let db = create_test_db().await.unwrap();
+        // UNKNOWN CODE
+        let (status, body) = post_company(db.clone(), json!({ "reg_code": "40000000000" })).await;
+        assert_eq!(status, 200);
+        assert_eq!(body, json!([]));
+        // LIQUIDATED COMPANY IS NOT IN THE DB
+        let (status, body) = post_company(db, json!({ "reg_code": "44102037886" })).await;
+        assert_eq!(status, 200);
+        assert_eq!(body, json!([]));
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_query_validation_is_400() {
+        let db = create_test_db().await.unwrap();
+        let bad = [
+            json!({}),
+            json!({ "include_pvd": true }),
+            json!({ "name": "Raimond fantastic", "reg_code": "40203572370" }),
+            json!({ "reg_code": "4020357237" }),    // 10
+            json!({ "reg_code": "402035723700" }),  // 12
+            json!({ "reg_code": "LV4020357237" }),  // 10 AFTER PREFIX
+            json!({ "reg_code": "" }),
+        ];
+        for payload in bad {
+            let (status, body) = post_company(db.clone(), payload.clone()).await;
+            assert_eq!(status, 400, "{payload}");
+            assert!(body["error"].is_string(), "{payload}");
+        }
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_reg_code_with_pvd() {
+        let db = create_test_db().await.unwrap();
+        {
+            let conn = db.get().expect("Couldn't get db connection from pool");
+            PvdRecord::create_table(&conn).await.unwrap();
+            conn.execute(
+                "INSERT INTO pvd (reg_code, pvd_code, address, object_name)
+                VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    "40203572370",
+                    "PVD-123",
+                    "Fantastics prospekts 123",
+                    "Production kitchen"
+                ],
+            )
+            .unwrap();
+        }
+        let (status, body) = post_company(
+            db,
+            json!({ "reg_code": "LV40203572370", "include_pvd": true }),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(body[0]["reg_code"], "40203572370");
+        assert_eq!(body[0]["pvd"].as_array().unwrap().len(), 1);
+        assert_eq!(body[0]["pvd"][0]["pvd_code"], "PVD-123");
+    }
+
+    #[actix_rt::test]
+    async fn test_lv_company_reg_code_db_error_is_500_not_empty() {
+        // EVERY POOLED CONNECTION IS A FRESH IN-MEMORY DB WITHOUT A company TABLE
+        let broken = crate::db::get_db::Pool::new(SqliteConnectionManager::memory()).unwrap();
+
+        let (status, body) = post_company(broken.clone(), json!({ "reg_code": "40203572370" })).await;
+        assert_eq!(status, 500);
+        assert!(body["error"].is_string());
+
+        // CONTRAST: THE NAME SEARCH STILL SWALLOWS THE SAME ERROR INTO []
+        let (status, body) = post_company(broken, json!({ "name": "Raimond fantastic" })).await;
+        assert_eq!(status, 200);
+        assert_eq!(body, json!([]));
+    }
+
     // THIS ASSUMES SERVER IS RUNNING
     #[test]
     async fn integration_lv_company_search_1000_times() {

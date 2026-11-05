@@ -50,6 +50,22 @@ impl Company {
         // RETURN
         Ok(search_results)
     }
+
+    /// Exact match on registration code. Returns 0 or 1 companies.
+    /// DB errors are returned, not swallowed, so "not found" stays distinct from "broken".
+    pub async fn search_by_reg_code(
+        conn: &Connection,
+        reg_code: &str,
+    ) -> Result<Vec<Company>, Box<dyn Error>> {
+        let mut stmt = conn.prepare(
+            "SELECT legal_form, name, city, address, zip, public_sector, reg_code, vat, vat_number
+            FROM company
+            WHERE reg_code = ?1
+            LIMIT 1",
+        )?;
+        let rows = stmt.query(params![reg_code])?;
+        search_map_results(rows).await
+    }
 }
 
 #[cfg(test)]

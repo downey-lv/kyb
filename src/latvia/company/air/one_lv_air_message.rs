@@ -23,32 +23,36 @@ pub async fn one_lv_air_message(
         Ok(AggregatedMessage::Text(bytes)) => {
             // HANDLE ONE MESSAGE
             let as_v8 = bytes.as_bytes();
-            let search = serde_json::from_slice::<CompanySearchQuery>(&as_v8);
+            // PING IS CHECKED FIRST: EVERY SEARCH FIELD IS OPTIONAL, SO A PING ALSO PARSES AS A SEARCH
             let ping = serde_json::from_slice::<Ping>(&as_v8);
-            // THIS IS SEARCH
-            if search.is_ok() {
-                // SOMEONE IS ACTUALLY SEARCHING SOMETHING - GET DB
-                let conn: PooledConnection<SqliteConnectionManager> =
-                    pool.get().expect("Couldn't get db connection from pool");
-                // EXTRACT SEARCH QUERY
-                let query = search.unwrap();
-                // SEARCH
-                let result = lv_company_search_handle(&conn, query).await?;
-                //drop(conn);
-                // STRINGIFY:
-                let respo = AirSearchResponse {
-                    result: Some(result),
-                    error: None,
-                };
-                // SEND
-                send_message(&mut session, respo).await?;
-            } else if ping.is_ok() {
+            let search = serde_json::from_slice::<CompanySearchQuery>(&as_v8);
+            if ping.is_ok() {
                 // THIS IS PING
                 let pong = Pong { pong: true };
                 let payload = serde_json::to_string(&pong)?;
                 if let Err(e) = &session.text(payload).await {
                     return Err(KybError::StringError(e.to_string()));
                 }
+            } else if search.is_ok() {
+                // SOMEONE IS ACTUALLY SEARCHING SOMETHING - GET DB
+                let conn: PooledConnection<SqliteConnectionManager> =
+                    pool.get().expect("Couldn't get db connection from pool");
+                // EXTRACT SEARCH QUERY
+                let query = search.unwrap();
+                // SEARCH; INVALID QUERIES ARE ANSWERED, NOT DROPPED
+                let respo = match lv_company_search_handle(&conn, query).await {
+                    Ok(result) => AirSearchResponse {
+                        result: Some(result),
+                        error: None,
+                    },
+                    Err(KybError::BadRequest(err)) => AirSearchResponse {
+                        result: None,
+                        error: Some(err),
+                    },
+                    Err(err) => return Err(err),
+                };
+                // SEND
+                send_message(&mut session, respo).await?;
             } else {
                 // IT'S NEIGHTER OF THE TWO
                 let respo = AirSearchResponse {

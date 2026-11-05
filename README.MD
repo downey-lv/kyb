@@ -83,6 +83,29 @@ Search "", get []
 ```
 Errors are not returned, enpty array [] is returned instead.
 ```
+
+## Search by registration code
+
+Send `reg_code` instead of `name` for an exact match. The code must be 11 characters; an optional `LV` prefix (any case) is stripped, so a VAT number works too.
+
+```
+curl -X POST http://127.0.0.1:10001/lv/company -H "Content-Type: application/json" -d '{"reg_code": "40203572370"}'
+curl -X POST http://127.0.0.1:10001/lv/company -H "Content-Type: application/json" -d '{"reg_code": "LV40203572370", "include_pvd": true}'
+```
+
+The response is the same array as a name search, with 0 or 1 companies. `include_pvd` works the same way.
+
+Liquidated companies are not stored, so their codes return `[]`.
+
+| Request | Response |
+|---|---|
+| Known code | `200` `[{...}]` |
+| Unknown code | `200` `[]` |
+| Both `name` and `reg_code`, or neither | `400` `{"error": "..."}` |
+| `reg_code` not 11 characters after stripping `LV` | `400` `{"error": "..."}` |
+| Database error | `500` `{"error": "Server down"}` |
+
+Unlike the name search, the reg code search does not hide database errors behind `[]`, so a `[]` answer always means the company is not registered.
 # Websocket company search:
 ```
 Sample ws frontend client is in /release/client.js
