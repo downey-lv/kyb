@@ -1,10 +1,10 @@
 use crate::config::KybConfig;
 use csv::Reader;
-use reqwest::get;
 use rusqlite::{Connection, Result, params};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::io::{Cursor, Read};
+use std::time::Duration;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct PvdRecord {
@@ -143,7 +143,17 @@ mod tests {
 pub async fn fetch_new_pvd_data(conn: &mut Connection) -> Result<(), Box<dyn Error>> {
     let url = KybConfig::SOURCE_PVD;
     println!("getting {}", url);
-    let response = get(url).await?.bytes().await?;
+    // Fail fast instead of waiting for the OS TCP timeout when PVD is unreachable.
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .build()?;
+    let response = client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
     let reader = Cursor::new(response);
     let mut archive = zip::ZipArchive::new(reader)?;
     let mut file = archive.by_name("ur-dati.csv")?;

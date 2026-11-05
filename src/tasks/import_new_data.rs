@@ -20,7 +20,16 @@ pub async fn import_new_data(pool: Pool<SqliteConnectionManager>) -> Result<(), 
     // GET PUBLIC INSTITUTIONS
     fetch_new_public_institution_data(&mut conn, &vat_table).await?;
     // GET PVD REGISTRATION DATA
-    fetch_new_pvd_data(&mut conn).await?;
+    // PVD is optional: if its server is unreachable, keep the previous PVD rows
+    // and let the rest of the import succeed.
+    if let Err(e) = fetch_new_pvd_data(&mut conn).await {
+        eprintln!("warning: skipping PVD data import: {}", e);
+        let mut source = e.source();
+        while let Some(cause) = source {
+            eprintln!("  caused by: {}", cause);
+            source = cause.source();
+        }
+    }
     // drop(pool);
     Ok(())
 }
